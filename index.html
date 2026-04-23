@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Piorun Drop Map ⚡</title>
+
+    <style>
+        body {
+            background: #0b0f14;
+            color: white;
+            font-family: Arial;
+            text-align: center;
+        }
+
+        h1 {
+            color: #00f7ff;
+            margin: 10px;
+        }
+
+        canvas {
+            border: 2px solid #00f7ff;
+            border-radius: 12px;
+            cursor: crosshair;
+        }
+
+        .panel {
+            margin-top: 10px;
+        }
+
+        button {
+            background: #00f7ff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 5px;
+        }
+
+        button:hover {
+            background: #00c2cc;
+        }
+
+        .info {
+            margin-top: 10px;
+            background: #111;
+            padding: 10px;
+            border-radius: 10px;
+            display: inline-block;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>⚡ PIORUN DROP MAP</h1>
+
+<canvas id="map" width="800" height="520"></canvas>
+
+<div class="panel">
+    <button onclick="calculate()">CALCULATE</button>
+    <button onclick="resetAll()">RESET</button>
+</div>
+
+<div class="info" id="info">
+    Kliknij: 🔴 drop → 🔵 bus start → 🔵 bus end
+</div>
+
+<script>
+const canvas = document.getElementById("map");
+const ctx = canvas.getContext("2d");
+
+let img = new Image();
+img.src = "/static/mapa.png";
+
+let scale = 1;
+let offsetX = 0;
+let offsetY = 0;
+
+let landing = null;
+let bus1 = null;
+let bus2 = null;
+let result = null;
+
+img.onload = () => draw();
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    ctx.translate(offsetX, offsetY);
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    drawPoints();
+    ctx.restore();
+
+    drawUI();
+}
+
+function drawPoints() {
+    if (landing) drawCircle(landing, "red");
+    if (bus1) drawCircle(bus1, "blue");
+    if (bus2) drawCircle(bus2, "blue");
+
+    if (bus1 && bus2) {
+        ctx.strokeStyle = "cyan";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(bus1.x, bus1.y);
+        ctx.lineTo(bus2.x, bus2.y);
+        ctx.stroke();
+    }
+
+    if (result) {
+        drawCircle({x: result.deploy_x, y: result.deploy_y}, "yellow");
+    }
+}
+
+function drawCircle(p, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawUI() {
+    if (result) {
+        document.getElementById("info").innerHTML =
+            `⏱ Czas: ${result.time}s | 📏 Dystans: ${result.distance}m | 🏔 Wys: ${result.terrain}m | 🪂 Deploy: ${result.deploy_height}m`;
+    }
+}
+
+canvas.addEventListener("click", e => {
+    const rect = canvas.getBoundingClientRect();
+
+    let x = (e.clientX - rect.left - offsetX) / scale;
+    let y = (e.clientY - rect.top - offsetY) / scale;
+
+    if (!landing) {
+        landing = {x, y};
+    } else if (!bus1) {
+        bus1 = {x, y};
+    } else if (!bus2) {
+        bus2 = {x, y};
+    } else {
+        landing = {x, y};
+        bus1 = null;
+        bus2 = null;
+        result = null;
+    }
+
+    draw();
+});
+
+function calculate() {
+    if (!landing || !bus1 || !bus2) return;
+
+    fetch("/calculate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({landing, bus1, bus2})
+    })
+    .then(r => r.json())
+    .then(data => {
+        result = data;
+        draw();
+    });
+}
+
+function resetAll() {
+    landing = null;
+    bus1 = null;
+    bus2 = null;
+    result = null;
+    draw();
+}
+
+canvas.addEventListener("wheel", e => {
+    e.preventDefault();
+
+    const zoom = e.deltaY < 0 ? 1.1 : 0.9;
+
+    offsetX -= (e.offsetX - offsetX) * (zoom - 1);
+    offsetY -= (e.offsetY - offsetY) * (zoom - 1);
+
+    scale *= zoom;
+
+    draw();
+});
+
+let dragging = false;
+let lastX, lastY;
+
+canvas.addEventListener("mousedown", e => {
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+});
+
+canvas.addEventListener("mouseup", () => dragging = false);
+
+canvas.addEventListener("mousemove", e => {
+    if (!dragging) return;
+
+    offsetX += e.clientX - lastX;
+    offsetY += e.clientY - lastY;
+
+    lastX = e.clientX;
+    lastY = e.clientY;
+
+    draw();
+});
+</script>
+
+</body>
+</html>
